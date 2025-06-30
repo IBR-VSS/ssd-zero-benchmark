@@ -1,12 +1,8 @@
 use anyhow::Result;
 use nix::ioctl_readwrite;
-use std::{
-    fs::File,
-    os::fd::AsRawFd,
-    time::{self, Instant},
-};
+use std::{fs::File, os::fd::AsRawFd, time::Instant};
 
-const PAGE_SIZE_GIB: f32 = 2.0 / 1024.0;
+const PAGE_SIZE_MIB: f32 = 2.0;
 
 #[repr(C)]
 struct Args {
@@ -40,10 +36,8 @@ fn main() -> Result<()> {
             measurements.push(duration.as_secs_f32());
         }
         let avg: f32 = measurements.iter().sum::<f32>() / measurements.len() as f32;
-        println!("avg: {avg}");
-
-        let throughput = 1000 as f32 * PAGE_SIZE_GIB / avg;
-        println!("{} GiB/s", throughput);
+        let throughput = 1000 as f32 * PAGE_SIZE_MIB / avg;
+        println!("{} MiB/s", throughput);
     }
     Ok(())
 }

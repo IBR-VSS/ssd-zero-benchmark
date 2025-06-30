@@ -33,8 +33,12 @@
           ];
       in {
         devShells.default = pkgs.mkShell {
-          nativeBuildInputs = [
+          nativeBuildInputs = with pkgs; [
             rust-toolchain
+            python3
+            pyright
+            python3Packages.matplotlib
+            python3Packages.paramiko
           ];
         };
       }
