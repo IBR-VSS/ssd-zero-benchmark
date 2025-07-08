@@ -1,24 +1,38 @@
+use anyhow::anyhow;
 use anyhow::Result;
+use csv::Writer;
 use nix::ioctl_readwrite;
+use serde::Serialize;
+use std::fs;
+use std::path::Path;
 use std::{fs::File, os::fd::AsRawFd};
 
 const PAGE_SIZE_MIB: f32 = 2.0;
 
+/// ioctl arguments
 #[repr(C)]
 struct Args {
-    reps: u32,
-    pages_per_cycle: u32,
+    n_pages: u32,
+    iodepth: u32,
     duration_ns: u64,
+}
+
+#[derive(Debug, Serialize)]
+struct Experiment {
+    benchmark: String,
+    inflights: u32,
+    throughput_mean: f32,
+    throughput_stderr: f32,
 }
 
 const LLZERO_MAGIC: u8 = 0x55;
 ioctl_readwrite!(llzero_bench, LLZERO_MAGIC, 0x00, Args);
 
-// Runs benchmark and returns the duration in secs
-fn benchmark(fd: nix::libc::c_int, reps: u32, pages_per_cycle: u32) -> Result<f32> {
+/// Runs benchmark and returns the duration in secs
+fn benchmark(fd: nix::libc::c_int, n_pages: u32, iodepth: u32) -> Result<f32> {
     let mut args = Args {
-        reps,
-        pages_per_cycle,
+        n_pages,
+        iodepth,
         duration_ns: 0,
     };
 
@@ -29,27 +43,82 @@ fn benchmark(fd: nix::libc::c_int, reps: u32, pages_per_cycle: u32) -> Result<f3
     Ok(duration_s)
 }
 
+fn mean(measurements: &[f32]) -> Option<f32> {
+    let len = measurements.len();
+    if len <= 0 {
+        return None;
+    }
+    Some(measurements.iter().sum::<f32>() / len as f32)
+}
+
+fn std_dev(measurements: &[f32]) -> Option<f32> {
+    match (mean(measurements), measurements.len()) {
+        (Some(mean), count) => {
+            let var = measurements
+                .iter()
+                .map(|value| {
+                    let diff = mean - (*value as f32);
+                    diff * diff
+                })
+                .sum::<f32>()
+                / count as f32;
+
+            Some(var.sqrt())
+        }
+        _ => None,
+    }
+}
+
+fn throughput_mib(num_pages: f32, duration_s: f32) -> Result<f32> {
+    if duration_s <= 0.0 {
+        return Err(anyhow!("Duration can't be zero!"));
+    }
+    Ok(num_pages * PAGE_SIZE_MIB / duration_s)
+}
+
 fn main() -> Result<()> {
     let file = File::open("/dev/async-zero")?;
     let fd = file.as_raw_fd();
+    let csv_path = Path::new("bench/throughput.csv");
+    let bench_path = csv_path.parent().expect("Parent dir");
+
+    if !fs::exists(bench_path)? {
+        println!(
+            "{} does not exist. Creating directory..",
+            bench_path.display()
+        );
+        fs::create_dir(bench_path)?;
+    }
+
+    let mut wtr = Writer::from_path(csv_path)?;
 
     println!("Running benchmark...");
+    let n_pages = 1000;
+    let benchmark_name = "SSD-Zero".to_string();
     for p in 1..=10 {
-        // let mut args = Args {
-        //     reps: 1000,
-        //     pages_per_cycle: p * 10,
-        //     duration_ns: 0,
-        // };
-
         let mut measurements: Vec<f32> = vec![];
+        let iodepth = p * 10;
+        // let iodepth = 100;
+
         for _ in 0..5 {
-            let duration = benchmark(fd, 1000, p * 10)?;
-            measurements.push(duration);
+            let duration = benchmark(fd, n_pages, iodepth)?;
+            let throughput = throughput_mib(n_pages as f32, duration)?;
+            measurements.push(throughput);
         }
-        let avg: f32 = measurements.iter().sum::<f32>() / measurements.len() as f32;
-        let throughput = 1000 as f32 * PAGE_SIZE_MIB / avg;
-        println!("{} MiB/s", throughput);
+
+        let avg = mean(&measurements).expect("Measurements must not be empty");
+        let std_dev = std_dev(&measurements).expect("Measurements must not be empty");
+        wtr.serialize(Experiment {
+            benchmark: benchmark_name.clone(),
+            inflights: iodepth,
+            throughput_mean: avg,
+            throughput_stderr: std_dev,
+        })?;
+        println!("avg: {} MiB/s, std_dev: {}", avg, std_dev);
     }
+
+    println!("Writing to {}...", csv_path.display());
+    wtr.flush()?;
     println!("Benchmark finished.");
     Ok(())
 }

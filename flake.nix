@@ -37,7 +37,8 @@
             rust-toolchain
             python3
             pyright
-            python3Packages.matplotlib
+            python3Packages.pandas
+            python3Packages.plotnine
             python3Packages.paramiko
           ];
         };
