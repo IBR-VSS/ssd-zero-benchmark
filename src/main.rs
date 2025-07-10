@@ -1,7 +1,7 @@
 use anyhow::anyhow;
 use anyhow::Result;
 use csv::Writer;
-use nix::ioctl_readwrite;
+use llzero::Benchmark;
 use serde::Serialize;
 use std::fs;
 use std::path::Path;
@@ -9,13 +9,7 @@ use std::{fs::File, os::fd::AsRawFd};
 
 const PAGE_SIZE_MIB: f32 = 2.0;
 
-/// ioctl arguments
-#[repr(C)]
-struct Args {
-    n_pages: u32,
-    iodepth: u32,
-    duration_ns: u64,
-}
+mod llzero;
 
 #[derive(Debug, Serialize)]
 struct Experiment {
@@ -23,24 +17,6 @@ struct Experiment {
     inflights: u32,
     throughput_mean: f32,
     throughput_stderr: f32,
-}
-
-const LLZERO_MAGIC: u8 = 0x55;
-ioctl_readwrite!(llzero_bench, LLZERO_MAGIC, 0x00, Args);
-
-/// Runs benchmark and returns the duration in secs
-fn benchmark(fd: nix::libc::c_int, n_pages: u32, iodepth: u32) -> Result<f32> {
-    let mut args = Args {
-        n_pages,
-        iodepth,
-        duration_ns: 0,
-    };
-
-    unsafe {
-        llzero_bench(fd, &mut args)?;
-    }
-    let duration_s = args.duration_ns as f32 * 1e-9;
-    Ok(duration_s)
 }
 
 fn mean(measurements: &[f32]) -> Option<f32> {
@@ -98,10 +74,11 @@ fn main() -> Result<()> {
     for p in 1..=10 {
         let mut measurements: Vec<f32> = vec![];
         let iodepth = p * 10;
-        // let iodepth = 100;
+        let const_sector = true;
+        let mut bench = Benchmark::new(fd, n_pages, iodepth, const_sector)?;
 
         for _ in 0..5 {
-            let duration = benchmark(fd, n_pages, iodepth)?;
+            let duration = bench.run()?;
             let throughput = throughput_mib(n_pages as f32, duration)?;
             measurements.push(throughput);
         }
