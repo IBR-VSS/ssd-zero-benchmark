@@ -1,6 +1,6 @@
 use anyhow::Result;
 use csv::Writer;
-use experiment::{throughput_mib, Measurements};
+use experiment::{Measurements, throughput_mib};
 use llzero::Benchmark;
 use std::fs;
 use std::path::Path;

@@ -39,8 +39,10 @@
             pyright
             python3Packages.pandas
             python3Packages.plotnine
+            python3Packages.matplotlib
             python3Packages.paramiko
           ];
+          MPLBACKEND = "Agg";
         };
       }
     );
