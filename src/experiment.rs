@@ -1,7 +1,7 @@
 use std::fs::File;
 
-use anyhow::anyhow;
 use anyhow::Result;
+use anyhow::anyhow;
 use csv::Writer;
 use serde::Serialize;
 
@@ -10,6 +10,7 @@ const PAGE_SIZE_MIB: f32 = 2.0;
 #[derive(Debug, Default)]
 pub struct Measurements {
     benchmark: String,
+    device: String,
     iodepth: u32,
     measurements: Vec<f32>,
 }
@@ -17,15 +18,17 @@ pub struct Measurements {
 #[derive(Serialize)]
 struct MeasurementCsv {
     benchmark: String,
+    device: String,
     iodepth: u32,
     mean: f32,
     stderr: f32,
 }
 
 impl Measurements {
-    pub fn new(name: &str, iodepth: u32) -> Self {
+    pub fn new(bench_name: &str, device_name: &str, iodepth: u32) -> Self {
         let mut ret = Measurements::default();
-        ret.benchmark = name.to_string();
+        ret.benchmark = bench_name.to_string();
+        ret.device = device_name.to_string();
         ret.iodepth = iodepth;
         ret
     }
@@ -68,6 +71,7 @@ impl Measurements {
 
         let e = MeasurementCsv {
             benchmark: self.benchmark.clone(),
+            device: self.device.clone(),
             iodepth: self.iodepth,
             mean,
             stderr,
@@ -91,8 +95,9 @@ mod tests {
 
     #[test]
     fn new_experiment() {
-        let exp = Measurements::new("test", 64);
+        let exp = Measurements::new("test", "device", 64);
         assert_eq!(exp.benchmark, "test");
+        assert_eq!(exp.device, "device");
         assert_eq!(exp.iodepth, 64);
     }
 }

@@ -1,5 +1,6 @@
 [package]
 name = "zeroing-bench"
+description = "SSD-Zero Benchmark program."
 version = "0.1.0"
 edition = "2024"
 
